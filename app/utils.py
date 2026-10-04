@@ -104,16 +104,11 @@ def get_skill_body(
 def render_skill_invocation(
     prompt: str, skills_dir: Path = Path(".claude/skills")
 ) -> str:
-    invocation_parts = prompt.strip().split(maxsplit=1)
-    if not invocation_parts or not invocation_parts[0].startswith("/"):
-        return ""
+    rendered_skills = render_skill_invocations(prompt, skills_dir)
+    return rendered_skills[0] if rendered_skills else ""
 
-    skill_name = invocation_parts[0][1:]
-    body = get_skill_body(skill_name, skills_dir)
-    if not body:
-        return ""
 
-    arguments = invocation_parts[1].split() if len(invocation_parts) > 1 else []
+def _substitute_skill_arguments(body: str, arguments: list[str]) -> str:
     full_arguments = " ".join(arguments)
 
     def replace_placeholder(match: re.Match[str]) -> str:
@@ -129,3 +124,29 @@ def render_skill_invocation(
         replace_placeholder,
         body,
     )
+
+
+def render_skill_invocations(
+    prompt: str, skills_dir: Path = Path(".claude/skills")
+) -> list[str]:
+    tokens = prompt.strip().split()
+    skill_bodies = []
+    argument_start = 0
+
+    for index, token in enumerate(tokens):
+        if not token.startswith("/"):
+            argument_start = index
+            break
+
+        body = get_skill_body(token[1:], skills_dir)
+        if not body:
+            argument_start = index
+            break
+
+        skill_bodies.append(body)
+        argument_start = index + 1
+
+    arguments = tokens[argument_start:]
+    return [
+        _substitute_skill_arguments(body, arguments) for body in skill_bodies
+    ]

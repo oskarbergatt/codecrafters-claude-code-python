@@ -8,7 +8,7 @@ from .utils import (
     get_skills_prompt,
     get_tools,
     read_file,
-    render_skill_invocation,
+    render_skill_invocations,
     run_bash,
     write_file,
 )
@@ -31,10 +31,14 @@ def main():
     skills_prompt = get_skills_prompt()
     if skills_prompt:
         messages.append({"role": "system", "content": skills_prompt})
-    skill_body = render_skill_invocation(args.p)
-    if skill_body:
-        messages.append({"role": "system", "content": skill_body})
-    messages.append({"role": "user", "content": args.p})
+    skill_bodies = render_skill_invocations(args.p)
+    if skill_bodies:
+        messages.extend(
+            {"role": "user", "content": skill_body}
+            for skill_body in skill_bodies
+        )
+    else:
+        messages.append({"role": "user", "content": args.p})
 
     model = "anthropic/claude-haiku-4.5"
 

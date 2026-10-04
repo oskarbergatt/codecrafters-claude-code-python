@@ -140,6 +140,51 @@ class ToolDefinitionsTest(unittest.TestCase):
 
         self.assertEqual(rendered, "<>|<>|<>")
 
+    def test_stacked_skills_share_arguments_and_exclude_uninvoked_skill(self):
+        if not hasattr(utils, "render_skill_invocations"):
+            self.fail("Stacked skill invocation is missing")
+
+        with TemporaryDirectory() as temp_dir:
+            skills_dir = Path(temp_dir)
+            for name, body in (
+                ("apple", "blueberry-$ARGUMENTS"),
+                ("grape", "cherry-$ARGUMENTS"),
+                ("pear", "dragonfruit-$ARGUMENTS"),
+            ):
+                skill_dir = skills_dir / name
+                skill_dir.mkdir()
+                (skill_dir / "SKILL.md").write_text(
+                    f"---\nname: {name}\ndescription: Test skill.\n---\n\n{body}\n",
+                    encoding="utf-8",
+                )
+
+            rendered = utils.render_skill_invocations(
+                "/apple /grape 4127", skills_dir
+            )
+
+        self.assertEqual(rendered, ["blueberry-4127", "cherry-4127"])
+        self.assertNotIn("dragonfruit", "\n".join(rendered))
+
+    def test_stacking_stops_at_unknown_skill_and_keeps_remaining_arguments(self):
+        if not hasattr(utils, "render_skill_invocations"):
+            self.fail("Stacked skill invocation is missing")
+
+        with TemporaryDirectory() as temp_dir:
+            skills_dir = Path(temp_dir)
+            apple_dir = skills_dir / "apple"
+            apple_dir.mkdir()
+            (apple_dir / "SKILL.md").write_text(
+                "---\nname: apple\ndescription: Test skill.\n---\n\n"
+                "Arguments: $ARGUMENTS\n",
+                encoding="utf-8",
+            )
+
+            rendered = utils.render_skill_invocations(
+                "/apple /pear 4127", skills_dir
+            )
+
+        self.assertEqual(rendered, ["Arguments: /pear 4127"])
+
 
 if __name__ == "__main__":
     unittest.main()
