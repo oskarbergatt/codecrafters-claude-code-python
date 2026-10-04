@@ -1,6 +1,9 @@
 import json
 import os
+from pathlib import Path
 import subprocess
+
+import yaml
 
 
 def get_tools() -> list:
@@ -32,3 +35,40 @@ def run_bash(command: str) -> str:
         text=True,
     )
     return result.stdout + result.stderr
+
+
+def get_skills_prompt(skills_dir: Path = Path(".claude/skills")) -> str:
+    if not skills_dir.is_dir():
+        return ""
+
+    advertised_skills = []
+    for skill_dir in sorted(skills_dir.iterdir()):
+        skill_file = skill_dir / "SKILL.md"
+        if not skill_dir.is_dir() or not skill_file.is_file():
+            continue
+
+        lines = skill_file.read_text(encoding="utf-8").splitlines()
+        if not lines or lines[0].strip() != "---":
+            continue
+
+        try:
+            frontmatter_end = next(
+                index
+                for index, line in enumerate(lines[1:], start=1)
+                if line.strip() == "---"
+            )
+        except StopIteration:
+            continue
+
+        metadata = yaml.safe_load("\n".join(lines[1:frontmatter_end])) or {}
+        name = metadata.get("name")
+        description = metadata.get("description")
+        if isinstance(name, str) and isinstance(description, str):
+            advertised_skills.append(f"- {name}: {description}")
+
+    if not advertised_skills:
+        return ""
+
+    return "You have access to the following skills:\n\n" + "\n".join(
+        advertised_skills
+    )
