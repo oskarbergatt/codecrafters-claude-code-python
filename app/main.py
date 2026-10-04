@@ -2,13 +2,16 @@ import argparse
 import os
 import sys
 import json
+from pathlib import Path
 from typing import Any, cast
 from openai import OpenAI
 from .utils import (
+    get_skill_context,
     get_skills_prompt,
     get_tools,
     load_skill,
     read_file,
+    render_skill_invocation,
     render_skill_messages,
     run_bash,
     write_file,
@@ -16,6 +19,86 @@ from .utils import (
 
 API_KEY = os.getenv("OPENROUTER_API_KEY")
 BASE_URL = os.getenv("OPENROUTER_BASE_URL", default="https://openrouter.ai/api/v1")
+
+
+def run_agent(
+    client: Any,
+    model: str,
+    tools: list,
+    messages: list[Any],
+    skills_dir: Path = Path(".claude/skills"),
+) -> str:
+    while True:
+        chat = client.chat.completions.create(
+            model=model, messages=messages, max_tokens=1000, tools=tools
+        )
+
+        if not chat.choices:
+            raise RuntimeError("no choices in response")
+
+        message = chat.choices[0].message
+        messages.append(
+            {
+                "role": "assistant",
+                "content": message.content,
+                "tool_calls": message.tool_calls,
+            }
+        )
+
+        if not message.tool_calls:
+            return message.content or ""
+
+        for tool_call in message.tool_calls:
+            tool_name = getattr(tool_call.function, "name", None) or getattr(
+                tool_call, "name", None
+            )
+            tool_args = getattr(tool_call.function, "arguments", None) or getattr(
+                tool_call, "arguments", None
+            )
+            if tool_args is None:
+                tool_kwargs = {}
+            else:
+                if isinstance(tool_args, (bytes, bytearray)):
+                    tool_args = tool_args.decode()
+                tool_kwargs = json.loads(tool_args)
+
+            if tool_name == "Read":
+                result = read_file(**tool_kwargs)
+            elif tool_name == "Write":
+                result = write_file(**tool_kwargs)
+            elif tool_name == "Bash":
+                result = run_bash(**tool_kwargs)
+            elif tool_name == "Skill":
+                skill_name = tool_kwargs.get("name", "")
+                skill_args = tool_kwargs.get("args", "")
+                if get_skill_context(skill_name, skills_dir) == "fork":
+                    prompt = f"/{skill_name}"
+                    if skill_args:
+                        prompt += f" {skill_args}"
+                    skill_body = render_skill_invocation(prompt, skills_dir)
+                    subagent_answer = run_agent(
+                        client,
+                        model,
+                        tools,
+                        [{"role": "user", "content": skill_body}],
+                        skills_dir,
+                    )
+                    result = (
+                        f"Skill {skill_name} ran in a separate context and returned: "
+                        f"{subagent_answer}"
+                    )
+                else:
+                    result = load_skill(
+                        skill_name,
+                        skill_args,
+                        skills_dir,
+                    )
+            else:
+                raise RuntimeError(f"Unknown tool: {tool_name}")
+
+            messages.append(
+                {"role": "tool", "tool_call_id": tool_call.id, "content": result}
+            )
 
 
 def main():
@@ -43,54 +126,7 @@ def main():
 
     model = "anthropic/claude-haiku-4.5"
 
-    while True:
-        chat = client.chat.completions.create(
-            model=model, messages=messages, max_tokens=1000, tools=tools
-        )
-
-        if not chat.choices or len(chat.choices) == 0:
-            raise RuntimeError("no choices in response")
-
-        message = chat.choices[0].message
-
-        messages.append(
-            {"role": "assistant", "content": None, "tool_calls": message.tool_calls}
-        )
-
-        if not message.tool_calls:
-            print(message.content)
-            break
-
-        for tool_call in message.tool_calls:
-            # some runtime types expose the tool name under different attributes; be defensive.
-            tool_name = getattr(tool_call.function, "name", None) or getattr(
-                tool_call, "name", None
-            )
-            if tool_name == "Read":
-                tool = read_file
-            elif tool_name == "Write":
-                tool = write_file
-            elif tool_name == "Bash":
-                tool = run_bash
-            elif tool_name == "Skill":
-                tool = load_skill
-            else:
-                raise RuntimeError(f"Unknown tool: {tool_name}")
-            tool_args = getattr(tool_call.function, "arguments", None) or getattr(
-                tool_call, "arguments", None
-            )
-            # tool_args may be None or not a str; ensure we pass a str to json.loads
-            if tool_args is None:
-                tool_kwargs = {}
-            else:
-                # some runtimes may provide arguments as bytes; decode if needed
-                if isinstance(tool_args, (bytes, bytearray)):
-                    tool_args = tool_args.decode()
-                tool_kwargs = json.loads(tool_args)
-            result = tool(**tool_kwargs)
-            messages.append(
-                {"role": "tool", "tool_call_id": tool_call.id, "content": result}
-            )
+    print(run_agent(client, model, tools, messages))
 
 
 if __name__ == "__main__":

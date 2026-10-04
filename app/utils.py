@@ -104,6 +104,34 @@ def get_skill_body(
     return "\n".join(lines[frontmatter_end + 1 :]).strip()
 
 
+def get_skill_context(
+    skill_name: str, skills_dir: Path = Path(".claude/skills")
+) -> str:
+    if not re.fullmatch(r"[a-z0-9-]+", skill_name):
+        return ""
+
+    skill_file = skills_dir / skill_name / "SKILL.md"
+    if not skill_file.is_file():
+        return ""
+
+    lines = skill_file.read_text(encoding="utf-8").splitlines()
+    if not lines or lines[0].strip() != "---":
+        return ""
+
+    try:
+        frontmatter_end = next(
+            index
+            for index, line in enumerate(lines[1:], start=1)
+            if line.strip() == "---"
+        )
+    except StopIteration:
+        return ""
+
+    metadata = yaml.safe_load("\n".join(lines[1:frontmatter_end])) or {}
+    context = metadata.get("context", "")
+    return context if isinstance(context, str) else ""
+
+
 def render_skill_invocation(
     prompt: str, skills_dir: Path = Path(".claude/skills")
 ) -> str:
