@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 
 
 def get_tools() -> list:
@@ -21,3 +22,13 @@ def write_file(file_path: str, content: str) -> str:
         file.write(content)
 
     return f"Successfully wrote to {file_path}"
+
+
+def run_bash(command: str) -> str:
+    result = subprocess.run(
+        command,
+        shell=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout + result.stderr
