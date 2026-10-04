@@ -5,10 +5,10 @@ import json
 from typing import Any, cast
 from openai import OpenAI
 from .utils import (
-    get_skill_body,
     get_skills_prompt,
     get_tools,
     read_file,
+    render_skill_invocation,
     run_bash,
     write_file,
 )
@@ -31,10 +31,9 @@ def main():
     skills_prompt = get_skills_prompt()
     if skills_prompt:
         messages.append({"role": "system", "content": skills_prompt})
-    if args.p.startswith("/"):
-        skill_body = get_skill_body(args.p[1:])
-        if skill_body:
-            messages.append({"role": "system", "content": skill_body})
+    skill_body = render_skill_invocation(args.p)
+    if skill_body:
+        messages.append({"role": "system", "content": skill_body})
     messages.append({"role": "user", "content": args.p})
 
     model = "anthropic/claude-haiku-4.5"

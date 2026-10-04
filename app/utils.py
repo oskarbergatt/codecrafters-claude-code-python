@@ -99,3 +99,33 @@ def get_skill_body(
         return ""
 
     return "\n".join(lines[frontmatter_end + 1 :]).strip()
+
+
+def render_skill_invocation(
+    prompt: str, skills_dir: Path = Path(".claude/skills")
+) -> str:
+    invocation_parts = prompt.strip().split(maxsplit=1)
+    if not invocation_parts or not invocation_parts[0].startswith("/"):
+        return ""
+
+    skill_name = invocation_parts[0][1:]
+    body = get_skill_body(skill_name, skills_dir)
+    if not body:
+        return ""
+
+    arguments = invocation_parts[1].split() if len(invocation_parts) > 1 else []
+    full_arguments = " ".join(arguments)
+
+    def replace_placeholder(match: re.Match[str]) -> str:
+        if match.group(0) == "$ARGUMENTS":
+            return full_arguments
+
+        index_text = match.group(1) or match.group(2)
+        index = int(index_text)
+        return arguments[index] if index < len(arguments) else ""
+
+    return re.sub(
+        r"\$ARGUMENTS\[(\d+)\]|\$(\d+)|\$ARGUMENTS",
+        replace_placeholder,
+        body,
+    )

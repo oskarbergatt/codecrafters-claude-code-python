@@ -97,6 +97,49 @@ class ToolDefinitionsTest(unittest.TestCase):
         self.assertEqual(body, "Respond with exactly one word: nectarine")
         self.assertNotIn("jujube", body)
 
+    def test_skill_arguments_replace_full_indexed_and_short_placeholders(self):
+        if not hasattr(utils, "render_skill_invocation"):
+            self.fail("Skill argument substitution is missing")
+
+        with TemporaryDirectory() as temp_dir:
+            skills_dir = Path(temp_dir)
+            skill_dir = skills_dir / "apple"
+            skill_dir.mkdir()
+            (skill_dir / "SKILL.md").write_text(
+                "---\nname: apple\ndescription: Deploys apples.\n---\n\n"
+                "Full: $ARGUMENTS. Reverse: $ARGUMENTS[1] $0. "
+                "Again: $1 $0. Missing: <$2>.\n",
+                encoding="utf-8",
+            )
+
+            rendered = utils.render_skill_invocation(
+                "/apple staging eu-west", skills_dir
+            )
+
+        self.assertEqual(
+            rendered,
+            "Full: staging eu-west. Reverse: eu-west staging. "
+            "Again: eu-west staging. Missing: <>.",
+        )
+
+    def test_skill_placeholders_become_empty_without_arguments(self):
+        if not hasattr(utils, "render_skill_invocation"):
+            self.fail("Skill argument substitution is missing")
+
+        with TemporaryDirectory() as temp_dir:
+            skills_dir = Path(temp_dir)
+            skill_dir = skills_dir / "apple"
+            skill_dir.mkdir()
+            (skill_dir / "SKILL.md").write_text(
+                "---\nname: apple\ndescription: Deploys apples.\n---\n\n"
+                "<$ARGUMENTS>|<$ARGUMENTS[0]>|<$0>\n",
+                encoding="utf-8",
+            )
+
+            rendered = utils.render_skill_invocation("/apple", skills_dir)
+
+        self.assertEqual(rendered, "<>|<>|<>")
+
 
 if __name__ == "__main__":
     unittest.main()
