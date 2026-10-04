@@ -71,6 +71,32 @@ class ToolDefinitionsTest(unittest.TestCase):
         )
         self.assertNotIn("SECRET", prompt)
 
+    def test_named_skill_invocation_loads_only_that_skills_body(self):
+        if not hasattr(utils, "get_skill_body"):
+            self.fail("Named skill invocation is missing")
+
+        with TemporaryDirectory() as temp_dir:
+            skills_dir = Path(temp_dir)
+            kestrel_dir = skills_dir / "kestrel"
+            quartz_dir = skills_dir / "quartz"
+            kestrel_dir.mkdir()
+            quartz_dir.mkdir()
+            (kestrel_dir / "SKILL.md").write_text(
+                "---\nname: kestrel\ndescription: Runs tests.\n---\n\n"
+                "Respond with exactly one word: nectarine\n",
+                encoding="utf-8",
+            )
+            (quartz_dir / "SKILL.md").write_text(
+                "---\nname: quartz\ndescription: Rotates credentials.\n---\n\n"
+                "Respond with exactly one word: jujube\n",
+                encoding="utf-8",
+            )
+
+            body = utils.get_skill_body("kestrel", skills_dir)
+
+        self.assertEqual(body, "Respond with exactly one word: nectarine")
+        self.assertNotIn("jujube", body)
+
 
 if __name__ == "__main__":
     unittest.main()

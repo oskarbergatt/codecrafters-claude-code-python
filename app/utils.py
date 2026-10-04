@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 
 import yaml
@@ -72,3 +73,29 @@ def get_skills_prompt(skills_dir: Path = Path(".claude/skills")) -> str:
     return "You have access to the following skills:\n\n" + "\n".join(
         advertised_skills
     )
+
+
+def get_skill_body(
+    skill_name: str, skills_dir: Path = Path(".claude/skills")
+) -> str:
+    if not re.fullmatch(r"[a-z0-9-]+", skill_name):
+        return ""
+
+    skill_file = skills_dir / skill_name / "SKILL.md"
+    if not skill_file.is_file():
+        return ""
+
+    lines = skill_file.read_text(encoding="utf-8").splitlines()
+    if not lines or lines[0].strip() != "---":
+        return ""
+
+    try:
+        frontmatter_end = next(
+            index
+            for index, line in enumerate(lines[1:], start=1)
+            if line.strip() == "---"
+        )
+    except StopIteration:
+        return ""
+
+    return "\n".join(lines[frontmatter_end + 1 :]).strip()

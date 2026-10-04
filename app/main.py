@@ -4,7 +4,14 @@ import sys
 import json
 from typing import Any, cast
 from openai import OpenAI
-from .utils import get_skills_prompt, get_tools, read_file, run_bash, write_file
+from .utils import (
+    get_skill_body,
+    get_skills_prompt,
+    get_tools,
+    read_file,
+    run_bash,
+    write_file,
+)
 
 API_KEY = os.getenv("OPENROUTER_API_KEY")
 BASE_URL = os.getenv("OPENROUTER_BASE_URL", default="https://openrouter.ai/api/v1")
@@ -24,6 +31,10 @@ def main():
     skills_prompt = get_skills_prompt()
     if skills_prompt:
         messages.append({"role": "system", "content": skills_prompt})
+    if args.p.startswith("/"):
+        skill_body = get_skill_body(args.p[1:])
+        if skill_body:
+            messages.append({"role": "system", "content": skill_body})
     messages.append({"role": "user", "content": args.p})
 
     model = "anthropic/claude-haiku-4.5"
