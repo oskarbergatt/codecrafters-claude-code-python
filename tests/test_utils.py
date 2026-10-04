@@ -6,7 +6,7 @@ import app.utils as utils
 
 
 class ToolDefinitionsTest(unittest.TestCase):
-    def test_read_write_and_bash_tools_are_available(self):
+    def test_read_write_bash_and_skill_tools_are_available(self):
         try:
             tools = utils.get_tools()
         except FileNotFoundError as error:
@@ -14,7 +14,7 @@ class ToolDefinitionsTest(unittest.TestCase):
 
         tools_by_name = {tool["function"]["name"]: tool for tool in tools}
 
-        self.assertEqual(set(tools_by_name), {"Read", "Write", "Bash"})
+        self.assertEqual(set(tools_by_name), {"Read", "Write", "Bash", "Skill"})
         self.assertEqual(
             tools_by_name["Read"]["function"]["parameters"]["required"],
             ["file_path"],
@@ -26,6 +26,14 @@ class ToolDefinitionsTest(unittest.TestCase):
         self.assertEqual(
             tools_by_name["Bash"]["function"]["parameters"]["required"],
             ["command"],
+        )
+        self.assertEqual(
+            tools_by_name["Skill"]["function"]["parameters"]["required"],
+            ["name"],
+        )
+        self.assertIn(
+            "args",
+            tools_by_name["Skill"]["function"]["parameters"]["properties"],
         )
 
     def test_bash_executes_a_command_and_returns_its_output(self):
@@ -67,7 +75,9 @@ class ToolDefinitionsTest(unittest.TestCase):
             prompt,
             "You have access to the following skills:\n\n"
             "- apple: Deploys the apple service to production.\n"
-            "- grape: Runs tests: reports failures.",
+            "- grape: Runs tests: reports failures.\n\n"
+            "If a skill matches the user's request, call the Skill tool with its name\n"
+            "and follow the instructions it returns.",
         )
         self.assertNotIn("SECRET", prompt)
 
@@ -184,6 +194,57 @@ class ToolDefinitionsTest(unittest.TestCase):
             )
 
         self.assertEqual(rendered, ["Arguments: /pear 4127"])
+
+    def test_skill_message_identifies_folder_for_relative_script_paths(self):
+        if not hasattr(utils, "render_skill_messages"):
+            self.fail("Skill folder context is missing")
+
+        with TemporaryDirectory() as temp_dir:
+            skills_dir = Path(temp_dir)
+            apple_dir = skills_dir / "apple"
+            apple_dir.mkdir()
+            (apple_dir / "SKILL.md").write_text(
+                "---\nname: apple\ndescription: Reports a checksum.\n---\n\n"
+                "Run `scripts/checksum.sh` using the Bash tool.\n",
+                encoding="utf-8",
+            )
+
+            messages = utils.render_skill_messages("/apple", skills_dir)
+
+        self.assertEqual(
+            messages,
+            [
+                f"Skill: apple (located at {apple_dir.as_posix()})\n"
+                "Paths in the instructions below are relative to that folder.\n\n"
+                "Run `scripts/checksum.sh` using the Bash tool."
+            ],
+        )
+
+    def test_skill_tool_loads_only_requested_skill_with_arguments(self):
+        if not hasattr(utils, "load_skill"):
+            self.fail("Skill tool handler is missing")
+
+        with TemporaryDirectory() as temp_dir:
+            skills_dir = Path(temp_dir)
+            apple_dir = skills_dir / "apple"
+            grape_dir = skills_dir / "grape"
+            apple_dir.mkdir()
+            grape_dir.mkdir()
+            (apple_dir / "SKILL.md").write_text(
+                "---\nname: apple\ndescription: Migration status.\n---\n\n"
+                "Respond with blueberry-$ARGUMENTS\n",
+                encoding="utf-8",
+            )
+            (grape_dir / "SKILL.md").write_text(
+                "---\nname: grape\ndescription: Formats code.\n---\n\n"
+                "Respond with decoy\n",
+                encoding="utf-8",
+            )
+
+            result = utils.load_skill("apple", "4127", skills_dir)
+
+        self.assertIn("blueberry-4127", result)
+        self.assertNotIn("decoy", result)
 
 
 if __name__ == "__main__":

@@ -7,8 +7,9 @@ from openai import OpenAI
 from .utils import (
     get_skills_prompt,
     get_tools,
+    load_skill,
     read_file,
-    render_skill_invocations,
+    render_skill_messages,
     run_bash,
     write_file,
 )
@@ -31,11 +32,11 @@ def main():
     skills_prompt = get_skills_prompt()
     if skills_prompt:
         messages.append({"role": "system", "content": skills_prompt})
-    skill_bodies = render_skill_invocations(args.p)
-    if skill_bodies:
+    skill_messages = render_skill_messages(args.p)
+    if skill_messages:
         messages.extend(
-            {"role": "user", "content": skill_body}
-            for skill_body in skill_bodies
+            {"role": "user", "content": skill_message}
+            for skill_message in skill_messages
         )
     else:
         messages.append({"role": "user", "content": args.p})
@@ -71,6 +72,8 @@ def main():
                 tool = write_file
             elif tool_name == "Bash":
                 tool = run_bash
+            elif tool_name == "Skill":
+                tool = load_skill
             else:
                 raise RuntimeError(f"Unknown tool: {tool_name}")
             tool_args = getattr(tool_call.function, "arguments", None) or getattr(

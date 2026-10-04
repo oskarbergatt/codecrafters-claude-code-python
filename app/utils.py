@@ -70,8 +70,11 @@ def get_skills_prompt(skills_dir: Path = Path(".claude/skills")) -> str:
     if not advertised_skills:
         return ""
 
-    return "You have access to the following skills:\n\n" + "\n".join(
-        advertised_skills
+    return (
+        "You have access to the following skills:\n\n"
+        + "\n".join(advertised_skills)
+        + "\n\nIf a skill matches the user's request, call the Skill tool with its name\n"
+        "and follow the instructions it returns."
     )
 
 
@@ -129,8 +132,14 @@ def _substitute_skill_arguments(body: str, arguments: list[str]) -> str:
 def render_skill_invocations(
     prompt: str, skills_dir: Path = Path(".claude/skills")
 ) -> list[str]:
+    return [body for _, body in _expand_skill_invocations(prompt, skills_dir)]
+
+
+def _expand_skill_invocations(
+    prompt: str, skills_dir: Path
+) -> list[tuple[str, str]]:
     tokens = prompt.strip().split()
-    skill_bodies = []
+    skills = []
     argument_start = 0
 
     for index, token in enumerate(tokens):
@@ -143,10 +152,38 @@ def render_skill_invocations(
             argument_start = index
             break
 
-        skill_bodies.append(body)
+        skills.append((token[1:], body))
         argument_start = index + 1
 
     arguments = tokens[argument_start:]
     return [
-        _substitute_skill_arguments(body, arguments) for body in skill_bodies
+        (skill_name, _substitute_skill_arguments(body, arguments))
+        for skill_name, body in skills
     ]
+
+
+def render_skill_messages(
+    prompt: str, skills_dir: Path = Path(".claude/skills")
+) -> list[str]:
+    return [
+        f"Skill: {skill_name} "
+        f"(located at {(skills_dir / skill_name).as_posix()})\n"
+        "Paths in the instructions below are relative to that folder.\n\n"
+        f"{body}"
+        for skill_name, body in _expand_skill_invocations(prompt, skills_dir)
+    ]
+
+
+def load_skill(
+    name: str,
+    args: str = "",
+    skills_dir: Path = Path(".claude/skills"),
+) -> str:
+    prompt = f"/{name}"
+    if args:
+        prompt += f" {args}"
+
+    messages = render_skill_messages(prompt, skills_dir)
+    if not messages:
+        return f"Skill not found: {name}"
+    return messages[0]
